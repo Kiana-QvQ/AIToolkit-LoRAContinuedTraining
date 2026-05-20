@@ -983,7 +983,19 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 return key[:-len(suffix)], kind
         return None, None
 
-    def _normalize_base_lora_module_name(self, module_name: str) -> str:
+    def _detect_base_lora_format(self, weights_sd) -> str:
+        for key in weights_sd.keys():
+            if ".lora_A.weight" in key or ".lora_B.weight" in key:
+                return "peft"
+            if key.startswith("unet.") or key.startswith("text_encoder.") or key.startswith("text_encoder_2."):
+                return "peft"
+            if key.startswith("lora_unet_") or key.startswith("lora_te") or key.startswith("lora_transformer_"):
+                return "kohya"
+        return "kohya"
+
+    def _normalize_base_lora_module_name(self, module_name: str, lora_format: str = "kohya") -> str:
+        if lora_format == "peft":
+            return module_name.replace(".", "$$")
         if self.model_config.is_flux or self.model_config.is_v3 or self.model_config.is_lumina2 or self.sd.is_transformer:
             return module_name.replace(".", "$$")
         return module_name.replace(".", "_")
@@ -994,13 +1006,14 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
         weights_sd = self._load_lora_state_dict_for_base(path)
         model_to_train = self.sd.get_model_to_train()
+        lora_format = self._detect_base_lora_format(weights_sd)
         modules_dim = {}
         modules_alpha = {}
         for key, value in weights_sd.items():
             module_name, kind = self._parse_lora_module_name_and_kind(key)
             if module_name is None:
                 continue
-            module_name = self._normalize_base_lora_module_name(module_name)
+            module_name = self._normalize_base_lora_module_name(module_name, lora_format=lora_format)
             if kind == "alpha":
                 modules_alpha[module_name] = value
             elif kind == "down":
@@ -1034,6 +1047,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
             network_config=self.network_config,
             network_type=self.network_config.type,
             transformer_only=self.network_config.transformer_only,
+            peft_format=lora_format == "peft",
             is_transformer=self.sd.is_transformer,
             base_model=self.sd,
             **network_kwargs
@@ -1054,7 +1068,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
         total_modules = len(network.get_all_modules())
         unmatched_keys = 0 if extra_weights is None else len(extra_weights.keys())
         print_acc(
-            f"Base LoRA ready: {os.path.basename(path)} | strength={strength} | modules={total_modules} | unmatched_keys={unmatched_keys}"
+            f"Base LoRA ready: {os.path.basename(path)} | format={lora_format} | strength={strength} | modules={total_modules} | unmatched_keys={unmatched_keys}"
         )
         if total_modules == 0:
             raise ValueError(
