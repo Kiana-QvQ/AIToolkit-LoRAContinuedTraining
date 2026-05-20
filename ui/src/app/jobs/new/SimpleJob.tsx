@@ -624,6 +624,17 @@ export default function SimpleJob({
               min={1}
               required
             />
+            <FormGroup label="LoRA Output" className="pt-2">
+              <Checkbox
+                label="Save Merged LoRA Output"
+                checked={jobConfig.config.process[0].save.save_merged_lora || false}
+                onChange={value => setJobConfig(value, 'config.process[0].save.save_merged_lora')}
+              />
+              <div className="pt-2 text-xs text-gray-500">
+                Default output saves only the newly trained LoRA delta. Enabling this also exports an additional merged
+                checkpoint that includes <span className="text-gray-300">base_loras + new_lora</span>.
+              </div>
+            </FormGroup>
           </Card>
         </div>
         <div>

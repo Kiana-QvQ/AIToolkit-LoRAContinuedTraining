@@ -489,6 +489,37 @@ class BaseSDTrainProcess(BaseTrainProcess):
     def end_step_hook(self):
         pass
 
+    def build_merged_base_and_trainable_lora_state_dict(self, dtype: torch.dtype):
+        if self.network is None:
+            return None
+        merged_state_dict = OrderedDict()
+        for base_network in self.base_lora_networks:
+            base_sd = base_network.get_state_dict(dtype=torch.float32)
+            strength = base_network.multiplier if hasattr(base_network, 'multiplier') else 1.0
+            for key, value in base_sd.items():
+                if not isinstance(value, torch.Tensor):
+                    continue
+                scaled_value = value.detach().clone().to(torch.float32) * float(strength)
+                if key in merged_state_dict:
+                    merged_state_dict[key] = merged_state_dict[key] + scaled_value
+                else:
+                    merged_state_dict[key] = scaled_value
+
+        trainable_sd = self.network.get_state_dict(dtype=torch.float32)
+        for key, value in trainable_sd.items():
+            if not isinstance(value, torch.Tensor):
+                continue
+            scaled_value = value.detach().clone().to(torch.float32)
+            if key in merged_state_dict:
+                merged_state_dict[key] = merged_state_dict[key] + scaled_value
+            else:
+                merged_state_dict[key] = scaled_value
+
+        final_sd = OrderedDict()
+        for key, value in merged_state_dict.items():
+            final_sd[key] = value.to('cpu', dtype=dtype).contiguous()
+        return final_sd
+
     def save(self, step=None):
         if not self.accelerator.is_main_process:
             return
@@ -540,6 +571,19 @@ class BaseSDTrainProcess(BaseTrainProcess):
                     metadata=save_meta,
                     extra_state_dict=embedding_dict
                 )
+                if self.save_config.save_merged_lora and len(self.base_lora_networks) > 0:
+                    merged_filename = f'{lora_name}{step_num}_merged.safetensors'
+                    merged_file_path = os.path.join(self.save_root, merged_filename)
+                    merged_state_dict = self.build_merged_base_and_trainable_lora_state_dict(
+                        dtype=get_torch_dtype(self.save_config.dtype)
+                    )
+                    if merged_state_dict is not None:
+                        save_file(
+                            merged_state_dict,
+                            merged_file_path,
+                            metadata=save_meta,
+                        )
+                        print_acc(f"Saved merged LoRA checkpoint to {merged_file_path}")
                 self.network.multiplier = prev_multiplier
                 # if we have an embedding as well, pair it with the network
 

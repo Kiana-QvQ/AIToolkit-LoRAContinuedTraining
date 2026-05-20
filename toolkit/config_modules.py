@@ -31,6 +31,7 @@ class SaveConfig:
         self.push_to_hub: bool = kwargs.get("push_to_hub", False)
         self.hf_repo_id: Optional[str] = kwargs.get("hf_repo_id", None)
         self.hf_private: Optional[str] = kwargs.get("hf_private", False)
+        self.save_merged_lora: bool = kwargs.get("save_merged_lora", False)
 
 class LoggingConfig:
     def __init__(self, **kwargs):

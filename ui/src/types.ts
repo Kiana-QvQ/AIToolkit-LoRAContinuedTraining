@@ -86,6 +86,7 @@ export interface SaveConfig {
   max_step_saves_to_keep: number;
   save_format: string;
   push_to_hub: boolean;
+  save_merged_lora?: boolean;
 }
 
 export interface DatasetConfig {
