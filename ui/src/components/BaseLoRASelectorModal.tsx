@@ -33,25 +33,45 @@ const BaseLoRASelectorModal: React.FC = () => {
   const [files, setFiles] = useState<FileObject[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [query, setQuery] = useState('');
+  const [directory, setDirectory] = useState('');
+  const [defaultDirectory, setDefaultDirectory] = useState('');
+
+  const loadFiles = (targetDir?: string) => {
+    setStatus('loading');
+    const params = new URLSearchParams();
+    if (targetDir && targetDir.trim() !== '') {
+      params.set('dir', targetDir.trim());
+    }
+    const qs = params.toString();
+    const url = qs ? `/api/files/list?${qs}` : '/api/files/list';
+    apiClient
+      .get(url)
+      .then(res => res.data)
+      .then(data => {
+        setFiles(data.files ?? []);
+        setStatus('success');
+        if (data.default_dir) {
+          setDefaultDirectory(data.default_dir);
+        }
+        if (data.scanned_dir) {
+          setDirectory(data.scanned_dir);
+        }
+      })
+      .catch(() => {
+        setStatus('error');
+      });
+  };
 
   useEffect(() => {
     if (!isOpen) {
       setFiles([]);
       setStatus('idle');
       setQuery('');
+      setDirectory('');
+      setDefaultDirectory('');
       return;
     }
-    setStatus('loading');
-    apiClient
-      .get('/api/files/list?ext=safetensors')
-      .then(res => res.data)
-      .then(data => {
-        setFiles(data.files ?? []);
-        setStatus('success');
-      })
-      .catch(() => {
-        setStatus('error');
-      });
+    loadFiles();
   }, [isOpen]);
 
   const filteredFiles = useMemo(() => {
@@ -70,6 +90,35 @@ const BaseLoRASelectorModal: React.FC = () => {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Select Base LoRA" size="xl">
       <div className="space-y-4">
+        <div className="space-y-2">
+          <div className="text-xs text-gray-500">
+            Default behavior scans the AI Toolkit training directory. You can also enter a custom directory and scan it.
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={directory}
+              onChange={e => setDirectory(e.target.value)}
+              placeholder="Directory to scan for .safetensors"
+              className="flex-1 text-sm px-3 py-2 bg-gray-950 dark:bg-gray-800 border border-gray-700 rounded-sm text-gray-100 placeholder:text-gray-500 focus:ring-2 focus:ring-gray-600 focus:border-transparent"
+            />
+            <button
+              type="button"
+              onClick={() => loadFiles(directory)}
+              className="px-3 py-2 text-sm rounded-sm bg-gray-800 hover:bg-gray-700 text-gray-100 border border-gray-700"
+            >
+              Scan
+            </button>
+            <button
+              type="button"
+              onClick={() => loadFiles(defaultDirectory)}
+              className="px-3 py-2 text-sm rounded-sm bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-700"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
         <input
           type="text"
           value={query}

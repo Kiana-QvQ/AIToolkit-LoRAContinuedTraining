@@ -40,9 +40,13 @@ function walkSafetensors(dir: string, maxFiles: number = 2000) {
 
 export async function GET(_request: NextRequest) {
   const trainingFolder = await getTrainingFolder();
-  if (!fs.existsSync(trainingFolder)) {
+  const request = _request;
+  const searchParams = request.nextUrl.searchParams;
+  const targetDir = searchParams.get('dir')?.trim() || trainingFolder;
+
+  if (!fs.existsSync(targetDir)) {
     return NextResponse.json({ files: [] });
   }
-  const files = walkSafetensors(trainingFolder);
-  return NextResponse.json({ files });
+  const files = walkSafetensors(targetDir);
+  return NextResponse.json({ files, scanned_dir: targetDir, default_dir: trainingFolder });
 }
