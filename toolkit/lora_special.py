@@ -238,11 +238,9 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
         self.rank_dropout = rank_dropout
         self.module_dropout = module_dropout
         self.is_checkpointing = False
-        self._multiplier: float = 1.0
+        self._multiplier: float = multiplier
         self.is_active: bool = False
         self.torch_multiplier = None
-        # triggers the state updates
-        self.multiplier = multiplier
         self.is_sdxl = is_sdxl
         self.is_v2 = is_v2
         self.is_v3 = is_v3
@@ -538,6 +536,8 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
         for lora in self.text_encoder_loras + self.unet_loras:
             assert lora.lora_name not in names, f"duplicated lora name: {lora.lora_name}"
             names.add(lora.lora_name)
+        if len(self.text_encoder_loras) > 0 or len(self.unet_loras) > 0:
+            self._update_torch_multiplier()
 
         if self.full_train_in_out:
             print("full train in out")
@@ -591,5 +591,4 @@ class LoRASpecialNetwork(ToolkitNetworkMixin, LoRANetwork):
                 all_params.append({"lr": unet_lr, "params": list(self.unet_conv_out.parameters())})
 
         return all_params
-
 
