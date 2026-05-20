@@ -967,8 +967,10 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
     def _load_lora_state_dict_for_base(self, path: str):
         if os.path.splitext(path)[1] == ".safetensors":
-            return load_safetensors_file(path)
-        return torch.load(path, map_location="cpu")
+            weights_sd = load_safetensors_file(path)
+        else:
+            weights_sd = torch.load(path, map_location="cpu")
+        return weights_sd
 
     def _parse_lora_module_name_and_kind(self, key: str):
         suffixes = [
@@ -995,6 +997,73 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 return "kohya"
         return "kohya"
 
+    def _should_convert_peft_base_lora_to_kohya(self) -> bool:
+        return not (
+            self.model_config.is_flux
+            or self.model_config.is_v3
+            or self.model_config.is_lumina2
+            or self.sd.is_transformer
+        )
+
+    def _convert_peft_base_lora_key_to_kohya(self, key: str) -> Optional[str]:
+        suffix_map = [
+            (".lora.down.weight", ".lora_down.weight"),
+            (".lora.up.weight", ".lora_up.weight"),
+            (".lora_A.weight", ".lora_down.weight"),
+            (".lora_B.weight", ".lora_up.weight"),
+        ]
+
+        suffix_out = None
+        module_name = key
+        for suffix_in, mapped_suffix in suffix_map:
+            if key.endswith(suffix_in):
+                module_name = key[:-len(suffix_in)]
+                suffix_out = mapped_suffix
+                break
+
+        if suffix_out is None:
+            if key.endswith(".alpha"):
+                module_name = key[:-len(".alpha")]
+                suffix_out = ".alpha"
+            else:
+                return None
+
+        if module_name.startswith("unet."):
+            prefix = "lora_unet_"
+            module_body = module_name[len("unet."):]
+        elif module_name.startswith("text_encoder_2."):
+            prefix = "lora_te2_"
+            module_body = module_name[len("text_encoder_2."):]
+        elif module_name.startswith("text_encoder_1."):
+            prefix = "lora_te1_"
+            module_body = module_name[len("text_encoder_1."):]
+        elif module_name.startswith("text_encoder."):
+            prefix = "lora_te1_" if (self.model_config.is_xl or self.model_config.is_ssd) else "lora_te_"
+            module_body = module_name[len("text_encoder."):]
+        else:
+            return None
+
+        return prefix + module_body.replace(".", "_") + suffix_out
+
+    def _prepare_base_lora_state_dict(self, weights_sd):
+        detected_format = self._detect_base_lora_format(weights_sd)
+        if detected_format != "peft" or not self._should_convert_peft_base_lora_to_kohya():
+            return weights_sd, detected_format
+
+        converted_state_dict = OrderedDict()
+        converted_any = False
+        for key, value in weights_sd.items():
+            converted_key = self._convert_peft_base_lora_key_to_kohya(key)
+            if converted_key is None:
+                converted_state_dict[key] = value
+                continue
+            converted_state_dict[converted_key] = value
+            converted_any = True
+
+        if converted_any:
+            return converted_state_dict, "peft-converted"
+        return weights_sd, detected_format
+
     def _normalize_base_lora_module_name(self, module_name: str, lora_format: str = "kohya") -> str:
         if lora_format == "peft":
             return module_name.replace(".", "$$")
@@ -1007,8 +1076,8 @@ class BaseSDTrainProcess(BaseTrainProcess):
             raise ValueError(f"Base LoRA path does not exist: {path}")
 
         weights_sd = self._load_lora_state_dict_for_base(path)
+        weights_sd, lora_format = self._prepare_base_lora_state_dict(weights_sd)
         model_to_train = self.sd.get_model_to_train()
-        lora_format = self._detect_base_lora_format(weights_sd)
         modules_dim = {}
         modules_alpha = {}
         for key, value in weights_sd.items():
