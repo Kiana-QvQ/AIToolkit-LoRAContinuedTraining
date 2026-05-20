@@ -2372,6 +2372,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
         did_first_flush = False
         flush_next = False
         for step in range(start_step_num, self.train_config.steps):
+            is_first_train_step = step == start_step_num
             if self.train_config.do_paramiter_swapping:
                 self.optimizer.optimizer.swap_paramiters()
             self.timer.start('train_loop')
@@ -2396,6 +2397,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 is_sample_step = self.sample_config.sample_every and self.step_num % self.sample_config.sample_every == 0
                 if self.train_config.disable_sampling:
                     is_sample_step = False
+                if is_first_train_step:
+                    print_acc("First training step: preparing batches")
+                    flush()
 
                 batch_list = []
 
@@ -2444,6 +2448,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
                         batch = None
                     batch_list.append(batch)
                     batch_step += 1
+                if is_first_train_step:
+                    print_acc("First training step: batches ready")
+                    flush()
 
                 # setup accumulation
                 if self.train_config.gradient_accumulation_steps == -1:
@@ -2466,6 +2473,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
             did_oom = False
             loss_dict = None
             try:
+                if is_first_train_step:
+                    print_acc("First training step: entering forward/backward")
+                    flush()
                 with self.accelerator.accumulate(self.modules_being_trained):
                     loss_dict = self.hook_train_loop(batch_list)
             except torch.cuda.OutOfMemoryError:
@@ -2500,6 +2510,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
             if not did_first_flush:
                 flush()
                 did_first_flush = True
+            if is_first_train_step:
+                print_acc("First training step: forward/backward finished")
+                flush()
             # flush()
             # setup the networks to gradient checkpointing and everything works
             if self.adapter is not None and isinstance(self.adapter, ReferenceAdapter):
