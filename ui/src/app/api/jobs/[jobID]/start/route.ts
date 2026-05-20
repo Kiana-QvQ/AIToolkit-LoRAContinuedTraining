@@ -39,8 +39,13 @@ export async function GET(request: NextRequest, { params }: { params: { jobID: s
     await prisma.queue.create({
       data: {
         gpu_ids: job.gpu_ids,
-        is_running: false,
+        is_running: true,
       },
+    });
+  } else if (!queue.is_running) {
+    await prisma.queue.update({
+      where: { id: queue.id },
+      data: { is_running: true },
     });
   }
 

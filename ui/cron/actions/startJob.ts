@@ -6,6 +6,7 @@ import fs from 'fs';
 import { TOOLKIT_ROOT, getTrainingFolder, getHFToken } from '../paths';
 import { resolvePythonPath } from '../pythonPath';
 const isWindows = process.platform === 'win32';
+const STARTUP_GRACE_MS = 4000;
 
 const startAndWatchJob = (job: Job) => {
   // starts and watches the job asynchronously
@@ -124,6 +125,53 @@ const startAndWatchJob = (job: Job) => {
         fs.writeFileSync(path.join(trainingFolder, 'pid.txt'), String(pid ?? ''), { flag: 'w' });
       } catch (e) {
         console.error('Error writing pid file:', e);
+      }
+
+      // Detached jobs can fail before Python has a chance to create log.txt.
+      // Give the child a brief grace period; if it exits immediately, surface
+      // that as a startup error instead of leaving the job stuck as "running".
+      const exitedQuickly = await new Promise<{ exited: boolean; code: number | null; signal: NodeJS.Signals | null }>(
+        resolveExit => {
+          let settled = false;
+          const settle = (result: { exited: boolean; code: number | null; signal: NodeJS.Signals | null }) => {
+            if (settled) return;
+            settled = true;
+            resolveExit(result);
+          };
+
+          const timer = setTimeout(() => settle({ exited: false, code: null, signal: null }), STARTUP_GRACE_MS);
+          subprocess.once('exit', (code, signal) => {
+            clearTimeout(timer);
+            settle({ exited: true, code, signal });
+          });
+          subprocess.once('error', () => {
+            clearTimeout(timer);
+            settle({ exited: true, code: null, signal: null });
+          });
+        },
+      );
+
+      if (exitedQuickly.exited) {
+        const startupMessage = `Job failed during startup${exitedQuickly.code !== null ? ` (exit code ${exitedQuickly.code})` : ''}${exitedQuickly.signal ? ` (${exitedQuickly.signal})` : ''}`;
+        try {
+          if (!fs.existsSync(logPath)) {
+            fs.writeFileSync(logPath, `${startupMessage}\n`, { flag: 'w' });
+          } else {
+            fs.appendFileSync(logPath, `\n${startupMessage}\n`);
+          }
+        } catch (e) {
+          console.error('Error writing startup failure log:', e);
+        }
+
+        await prisma.job.update({
+          where: { id: jobID },
+          data: {
+            status: 'error',
+            info: startupMessage,
+          },
+        });
+        resolve();
+        return;
       }
 
       // Important: let the child run independently of this Node process.
