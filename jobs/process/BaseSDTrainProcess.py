@@ -972,6 +972,8 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
     def _parse_lora_module_name_and_kind(self, key: str):
         suffixes = [
+            (".lora.down.weight", "down"),
+            (".lora.up.weight", "up"),
             (".lora_down.weight", "down"),
             (".lora_up.weight", "up"),
             (".lora_A.weight", "down"),
