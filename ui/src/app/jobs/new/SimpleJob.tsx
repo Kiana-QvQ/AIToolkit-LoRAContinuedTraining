@@ -29,6 +29,7 @@ import { FlipHorizontal2, FlipVertical2 } from 'lucide-react';
 import { handleModelArchChange } from './utils';
 import { IoFlaskSharp } from 'react-icons/io5';
 import { isMac } from '@/helpers/basic';
+import { openBaseLoRASelectorModal } from '@/components/BaseLoRASelectorModal';
 
 type Props = {
   jobConfig: JobConfig;
@@ -78,6 +79,7 @@ export default function SimpleJob({
 
   const isVideoModel = !!(modelArch?.group === 'video');
   const isAudioModel = !!(modelArch?.group === 'audio');
+  const baseLoras = jobConfig.config.process[0].network?.base_loras ?? [];
 
   const taggedSampleArr: Record<string, any>[] | null = useMemo(() => {
     if (!modelArch) return null;
@@ -480,6 +482,88 @@ export default function SimpleJob({
                 )}
               </>
             )}
+            <FormGroup label="Base LoRAs" className="pt-2">
+              <div className="space-y-3">
+                <div className="text-xs text-gray-500">
+                  Recommended mixing range is <span className="text-gray-300">0.0 - 1.0</span>. Use 1.0 for full
+                  strength, 0.5 for half strength, and 0.0 to disable a base LoRA. Values above 1.0 or below 0.0 are
+                  allowed for advanced use.
+                </div>
+                {baseLoras.length === 0 && <div className="text-xs text-gray-500">No base LoRAs configured.</div>}
+                {baseLoras.map((baseLora, idx) => (
+                  <div key={idx} className="rounded-sm border border-gray-800 bg-gray-950/60 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-gray-400">Base LoRA #{idx + 1}</div>
+                      <button
+                        type="button"
+                        className="text-gray-400 hover:text-red-400"
+                        onClick={() => {
+                          const next = objectCopy(baseLoras).filter((_, i) => i !== idx);
+                          setJobConfig(next, 'config.process[0].network.base_loras');
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <TextInput
+                      label="Path"
+                      value={baseLora.path ?? ''}
+                      onChange={value => setJobConfig(value, `config.process[0].network.base_loras[${idx}].path`)}
+                      placeholder="Path to an existing LoRA .safetensors"
+                      suffix={
+                        <button
+                          type="button"
+                          className="text-xs text-gray-300 hover:text-white"
+                          onClick={e => {
+                            e.preventDefault();
+                            openBaseLoRASelectorModal(path =>
+                              setJobConfig(path, `config.process[0].network.base_loras[${idx}].path`),
+                            );
+                          }}
+                        >
+                          Select
+                        </button>
+                      }
+                    />
+                    <NumberInput
+                      label="Strength"
+                      value={baseLora.strength ?? 1.0}
+                      onChange={value =>
+                        setJobConfig(value ?? 1.0, `config.process[0].network.base_loras[${idx}].strength`)
+                      }
+                      min={-10}
+                      max={10}
+                    />
+                    <div className="pt-2">
+                      <SliderInput
+                        label="Blend"
+                        value={Math.max(0, Math.min(1, baseLora.strength ?? 1.0))}
+                        onChange={value =>
+                          setJobConfig(Number(value.toFixed(2)), `config.process[0].network.base_loras[${idx}].strength`)
+                        }
+                        min={0}
+                        max={1}
+                        step={0.01}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="w-full rounded-sm border border-dashed border-gray-700 px-3 py-2 text-sm text-gray-300 hover:border-gray-500 hover:text-white"
+                  onClick={() => {
+                    const next = objectCopy(baseLoras);
+                    next.push({
+                      path: '',
+                      strength: 1.0,
+                    });
+                    setJobConfig(next, 'config.process[0].network.base_loras');
+                  }}
+                >
+                  Add Base LoRA
+                </button>
+              </div>
+            </FormGroup>
           </Card>
           {!disableSections.includes('slider') && (
             <Card title="Slider">

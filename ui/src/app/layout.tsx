@@ -10,6 +10,7 @@ import DocModal from '@/components/DocModal';
 import os from 'os';
 import { CaptionDatasetModal } from '@/components/CaptionDatasetModal';
 import MergeLoRAsModal from '@/components/MergeLoRAsModal';
+import BaseLoRASelectorModal from '@/components/BaseLoRASelectorModal';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <DocModal />
         <CaptionDatasetModal />
         <MergeLoRAsModal />
+        <BaseLoRASelectorModal />
       </body>
     </html>
   );

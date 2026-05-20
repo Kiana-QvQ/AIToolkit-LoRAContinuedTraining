@@ -165,6 +165,12 @@ class LoRMConfig:
 NetworkType = Literal['lora', 'locon', 'lorm', 'lokr']
 
 
+class BaseLoraConfig:
+    def __init__(self, **kwargs):
+        self.path: str = kwargs.get('path', None)
+        self.strength: float = float(kwargs.get('strength', 1.0))
+
+
 class NetworkConfig:
     def __init__(self, **kwargs):
         self.type: NetworkType = kwargs.get('type', 'lora')
@@ -220,6 +226,14 @@ class NetworkConfig:
         
         # start from a pretrained lora
         self.pretrained_lora_path = kwargs.get('pretrained_lora_path', None)
+        
+        # fixed loras applied as the training base before the trainable network
+        raw_base_loras = kwargs.get('base_loras', [])
+        self.base_loras: List[BaseLoraConfig] = [
+            base_lora if isinstance(base_lora, BaseLoraConfig) else BaseLoraConfig(**base_lora)
+            for base_lora in raw_base_loras
+            if base_lora is not None
+        ]
 
 
 AdapterTypes = Literal['t2i', 'ip', 'ip+', 'clip', 'ilora', 'photo_maker', 'control_net', 'control_lora', 'i2v']

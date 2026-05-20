@@ -68,10 +68,16 @@ export interface NetworkConfig {
   conv_alpha: number;
   lokr_full_rank: boolean;
   lokr_factor: number;
+  base_loras?: BaseLoraConfig[];
   network_kwargs: {
     ignore_if_contains: string[];
   };
   transformer_only?: boolean;
+}
+
+export interface BaseLoraConfig {
+  path: string;
+  strength: number;
 }
 
 export interface SaveConfig {

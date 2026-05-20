@@ -68,6 +68,7 @@ from accelerate import Accelerator
 import transformers
 import diffusers
 import hashlib
+from safetensors.torch import load_file as load_safetensors_file
 
 from toolkit.util.blended_blur_noise import get_blended_blur_noise
 from toolkit.util.get_model import get_model_class
@@ -199,6 +200,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
         self.adapter: Union[T2IAdapter, IPAdapter, ClipVisionAdapter, ReferenceAdapter, CustomAdapter, ControlNetModel, None] = None
         self.embedding: Union[Embedding, None] = None
         self.decorator: Union[Decorator, None] = None
+        self.base_lora_networks: List[Network] = []
 
         is_training_adapter = self.adapter_config is not None and self.adapter_config.train
 
@@ -918,6 +920,120 @@ class BaseSDTrainProcess(BaseTrainProcess):
     def load_additional_training_modules(self, params):
         # override in subclass
         return params
+
+    def _load_lora_state_dict_for_base(self, path: str):
+        if os.path.splitext(path)[1] == ".safetensors":
+            return load_safetensors_file(path)
+        return torch.load(path, map_location="cpu")
+
+    def _parse_lora_module_name_and_kind(self, key: str):
+        suffixes = [
+            (".lora_down.weight", "down"),
+            (".lora_up.weight", "up"),
+            (".lora_A.weight", "down"),
+            (".lora_B.weight", "up"),
+            (".alpha", "alpha"),
+        ]
+        for suffix, kind in suffixes:
+            if key.endswith(suffix):
+                return key[:-len(suffix)], kind
+        return None, None
+
+    def _normalize_base_lora_module_name(self, module_name: str) -> str:
+        if self.model_config.is_flux or self.model_config.is_v3 or self.model_config.is_lumina2 or self.sd.is_transformer:
+            return module_name.replace(".", "$$")
+        return module_name.replace(".", "_")
+
+    def _create_base_lora_network_from_path(self, path: str, strength: float) -> Optional[Network]:
+        if not os.path.exists(path):
+            raise ValueError(f"Base LoRA path does not exist: {path}")
+
+        weights_sd = self._load_lora_state_dict_for_base(path)
+        model_to_train = self.sd.get_model_to_train()
+        modules_dim = {}
+        modules_alpha = {}
+        for key, value in weights_sd.items():
+            module_name, kind = self._parse_lora_module_name_and_kind(key)
+            if module_name is None:
+                continue
+            module_name = self._normalize_base_lora_module_name(module_name)
+            if kind == "alpha":
+                modules_alpha[module_name] = value
+            elif kind == "down":
+                modules_dim[module_name] = int(value.size()[0])
+
+        for key in modules_dim.keys():
+            if key not in modules_alpha:
+                modules_alpha[key] = modules_dim[key]
+
+        network_kwargs = {} if self.network_config.network_kwargs is None else copy.deepcopy(self.network_config.network_kwargs)
+        if hasattr(self.sd, 'target_lora_modules'):
+            network_kwargs['target_lin_modules'] = self.sd.target_lora_modules
+
+        network = LoRASpecialNetwork(
+            text_encoder=self.sd.text_encoder,
+            unet=model_to_train,
+            multiplier=strength,
+            modules_dim=modules_dim,
+            modules_alpha=modules_alpha,
+            train_unet=self.train_config.train_unet,
+            train_text_encoder=self.train_config.train_text_encoder,
+            is_sdxl=self.model_config.is_xl or self.model_config.is_ssd,
+            is_v2=self.model_config.is_v2,
+            is_v3=self.model_config.is_v3,
+            is_pixart=self.model_config.is_pixart,
+            is_auraflow=self.model_config.is_auraflow,
+            is_flux=self.model_config.is_flux,
+            is_lumina2=self.model_config.is_lumina2,
+            use_text_encoder_1=self.model_config.use_text_encoder_1,
+            use_text_encoder_2=self.model_config.use_text_encoder_2,
+            network_config=self.network_config,
+            network_type=self.network_config.type,
+            transformer_only=self.network_config.transformer_only,
+            is_transformer=self.sd.is_transformer,
+            base_model=self.sd,
+            **network_kwargs
+        )
+        network.force_to(self.device_torch, dtype=torch.float32)
+        network.apply_to(
+            self.sd.text_encoder,
+            model_to_train,
+            self.train_config.train_text_encoder,
+            self.train_config.train_unet
+        )
+        extra_weights = network.load_weights(weights_sd)
+        network._update_torch_multiplier()
+        network.eval()
+        network.requires_grad_(False)
+        network.is_active = True
+        network.can_merge_in = False
+        total_modules = len(network.get_all_modules())
+        unmatched_keys = 0 if extra_weights is None else len(extra_weights.keys())
+        print_acc(
+            f"Base LoRA ready: {os.path.basename(path)} | strength={strength} | modules={total_modules} | unmatched_keys={unmatched_keys}"
+        )
+        if total_modules == 0:
+            raise ValueError(
+                f"Base LoRA produced zero modules after parsing: {path}. Check format or model compatibility."
+            )
+        if extra_weights is not None and unmatched_keys > 0:
+            sample_keys = list(extra_weights.keys())[:8]
+            print_acc(
+                f"Base LoRA had {unmatched_keys} unmatched keys. Sample: {sample_keys}"
+            )
+        return network
+
+    def setup_base_loras(self):
+        if self.network_config is None or not getattr(self.network_config, 'base_loras', None):
+            return
+        self.base_lora_networks = []
+        for base_lora in self.network_config.base_loras:
+            if base_lora.path is None or str(base_lora.path).strip() == "":
+                continue
+            print_acc(f"Loading base LoRA: {base_lora.path} (strength={base_lora.strength})")
+            network = self._create_base_lora_network_from_path(base_lora.path, base_lora.strength)
+            self.base_lora_networks.append(network)
+        print_acc(f"Loaded {len(self.base_lora_networks)} base LoRA(s) for this training run.")
 
     def get_sigmas(self, timesteps, n_dim=4, dtype=torch.float32):
         sigmas = self.sd.noise_scheduler.sigmas.to(device=self.device, dtype=dtype)
@@ -1741,6 +1857,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
         flush()
         if not self.is_fine_tuning:
             if self.network_config is not None:
+                self.setup_base_loras()
                 # TODO should we completely switch to LycorisSpecialNetwork?
                 network_kwargs = self.network_config.network_kwargs
                 is_lycoris = False
