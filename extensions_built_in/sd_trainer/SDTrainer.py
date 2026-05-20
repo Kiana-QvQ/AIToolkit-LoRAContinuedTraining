@@ -1257,6 +1257,7 @@ class SDTrainer(BaseSDTrainProcess):
     
 
     def train_single_accumulation(self, batch: DataLoaderBatchDTO):
+        is_first_train_step = getattr(self, "step_num", 0) == getattr(self, "start_step", 0)
         with torch.no_grad():
             self.timer.start('preprocess_batch')
             if isinstance(self.adapter, CustomAdapter):
@@ -1276,7 +1277,13 @@ class SDTrainer(BaseSDTrainProcess):
                 if self.sd.text_encoder.dtype != self.sd.te_torch_dtype:
                     self.sd.text_encoder.to(self.sd.te_torch_dtype)
 
+            if is_first_train_step:
+                print_acc("First training step detail: process_general_training_batch start")
+                flush()
             noisy_latents, noise, timesteps, conditioned_prompts, imgs = self.process_general_training_batch(batch)
+            if is_first_train_step:
+                print_acc("First training step detail: process_general_training_batch done")
+                flush()
             if self.train_config.do_cfg or self.train_config.do_random_cfg:
                 # pick random negative prompts
                 if self.negative_prompt_pool is not None:
@@ -2006,6 +2013,9 @@ class SDTrainer(BaseSDTrainProcess):
                     )
                 else:
                     with self.timer('predict_unet'):
+                        if is_first_train_step:
+                            print_acc("First training step detail: predict_unet start")
+                            flush()
                         noise_pred = self.predict_noise(
                             noisy_latents=noisy_latents.to(self.device_torch, dtype=dtype),
                             timesteps=timesteps,
@@ -2015,6 +2025,9 @@ class SDTrainer(BaseSDTrainProcess):
                             is_primary_pred=True,
                             **pred_kwargs
                         )
+                        if is_first_train_step:
+                            print_acc("First training step detail: predict_unet done")
+                            flush()
                     self.after_unet_predict()
 
                     with self.timer('calculate_loss'):
@@ -2085,7 +2098,13 @@ class SDTrainer(BaseSDTrainProcess):
                     # if self.is_bfloat:
                     # loss.backward()
                     # else:
+                    if is_first_train_step:
+                        print_acc("First training step detail: backward start")
+                        flush()
                     self.accelerator.backward(loss)
+                    if is_first_train_step:
+                        print_acc("First training step detail: backward done")
+                        flush()
 
         return loss.detach()
         # flush()

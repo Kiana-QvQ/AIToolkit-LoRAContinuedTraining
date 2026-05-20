@@ -1253,8 +1253,12 @@ class BaseSDTrainProcess(BaseTrainProcess):
         return noise
 
     def process_general_training_batch(self, batch: 'DataLoaderBatchDTO'):
+        is_first_train_step = getattr(self, "step_num", 0) == getattr(self, "start_step", 0)
         with torch.no_grad():
             with self.timer('prepare_prompt'):
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_prompt start")
+                    flush()
                 prompts = batch.get_caption_list()
                 is_reg_list = batch.get_is_reg_list()
 
@@ -1309,8 +1313,14 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
 
                     conditioned_prompts.append(prompt)
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_prompt done")
+                    flush()
 
             with self.timer('prepare_latents'):
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_latents start")
+                    flush()
                 dtype = get_torch_dtype(self.train_config.dtype)
                 imgs = None
                 is_reg = any(batch.get_is_reg_list())
@@ -1349,7 +1359,13 @@ class BaseSDTrainProcess(BaseTrainProcess):
 
                         # show_tensors(imgs, 'imgs')
 
+                    if is_first_train_step:
+                        print_acc("First training step detail: encode_images start")
+                        flush()
                     latents = self.sd.encode_images(imgs)
+                    if is_first_train_step:
+                        print_acc("First training step detail: encode_images done")
+                        flush()
                     batch.latents = latents
 
                 if self.train_config.standardize_latents:
@@ -1378,15 +1394,33 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 if batch.unconditional_tensor is not None and batch.unconditional_latents is None:
                     unconditional_imgs = batch.unconditional_tensor
                     unconditional_imgs = unconditional_imgs.to(self.device_torch, dtype=dtype)
+                    if is_first_train_step:
+                        print_acc("First training step detail: encode_unconditional_images start")
+                        flush()
                     unconditional_latents = self.sd.encode_images(unconditional_imgs)
+                    if is_first_train_step:
+                        print_acc("First training step detail: encode_unconditional_images done")
+                        flush()
                     batch.unconditional_latents = unconditional_latents * self.train_config.latent_multiplier
 
                 unaugmented_latents = None
                 if self.train_config.loss_target == 'differential_noise':
                     # we determine noise from the differential of the latents
+                    if is_first_train_step:
+                        print_acc("First training step detail: encode_unaugmented_images start")
+                        flush()
                     unaugmented_latents = self.sd.encode_images(batch.unaugmented_tensor)
+                    if is_first_train_step:
+                        print_acc("First training step detail: encode_unaugmented_images done")
+                        flush()
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_latents done")
+                    flush()
 
             with self.timer('prepare_scheduler'):
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_scheduler start")
+                    flush()
                 
                 batch_size = len(batch.file_items)
                 min_noise_steps = self.train_config.min_denoising_steps
@@ -1446,6 +1480,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
                     self.sd.noise_scheduler.set_timesteps(
                         num_train_timesteps, device=self.device_torch
                     )
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_scheduler done")
+                    flush()
             if self.sd.is_multistage:
                 with self.timer('adjust_multistage_timesteps'):
                     # get our current sample range
@@ -1465,6 +1502,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
             
                     
             with self.timer('prepare_timesteps_indices'):
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_timesteps start")
+                    flush()
 
                 content_or_style = self.train_config.content_or_style
                 if is_reg:
@@ -1540,8 +1580,14 @@ class BaseSDTrainProcess(BaseTrainProcess):
             with self.timer('convert_timestep_indices_to_timesteps'):
                 # convert the timestep_indices to a timestep
                 timesteps = self.sd.noise_scheduler.timesteps[timestep_indices.long()]
+            if is_first_train_step:
+                print_acc("First training step detail: prepare_timesteps done")
+                flush()
                 
             with self.timer('prepare_noise'):
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_noise start")
+                    flush()
                 # get noise
                 noise = self.get_noise(latents, batch_size, dtype=dtype, batch=batch, timestep=timesteps)
 
@@ -1608,7 +1654,13 @@ class BaseSDTrainProcess(BaseTrainProcess):
                     sigma = self.train_config.random_noise_multiplier
                     noise_multiplier = torch.exp(torch.randn(s, device=noise.device, dtype=noise.dtype) * sigma)
                     noise = noise * noise_multiplier
+                if is_first_train_step:
+                    print_acc("First training step detail: prepare_noise done")
+                    flush()
             with self.timer('make_noisy_latents'):
+                if is_first_train_step:
+                    print_acc("First training step detail: make_noisy_latents start")
+                    flush()
 
                 latent_multiplier = self.train_config.latent_multiplier
 
@@ -1692,7 +1744,10 @@ class BaseSDTrainProcess(BaseTrainProcess):
             noisy_latents.requires_grad = False
             noisy_latents = noisy_latents.detach()
             noise.requires_grad = False
-            noise = noise.detach()
+                noise = noise.detach()
+                if is_first_train_step:
+                    print_acc("First training step detail: make_noisy_latents done")
+                    flush()
 
         return noisy_latents, noise, timesteps, conditioned_prompts, imgs
 
