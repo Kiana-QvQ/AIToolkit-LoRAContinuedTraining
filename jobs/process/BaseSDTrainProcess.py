@@ -1744,10 +1744,10 @@ class BaseSDTrainProcess(BaseTrainProcess):
             noisy_latents.requires_grad = False
             noisy_latents = noisy_latents.detach()
             noise.requires_grad = False
-                noise = noise.detach()
-                if is_first_train_step:
-                    print_acc("First training step detail: make_noisy_latents done")
-                    flush()
+            noise = noise.detach()
+            if is_first_train_step:
+                print_acc("First training step detail: make_noisy_latents done")
+                flush()
 
         return noisy_latents, noise, timesteps, conditioned_prompts, imgs
 

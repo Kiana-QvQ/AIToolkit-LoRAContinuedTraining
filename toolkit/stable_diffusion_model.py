@@ -140,14 +140,16 @@ class StableDiffusion:
         self.device = str(device)
         if "cuda" in self.device and ":" not in self.device:
             self.device = f"{self.device}:0"
-        self.device_torch = torch.device(device)
+        self.device_torch = torch.device(self.device)
         self.dtype = dtype
         self.torch_dtype = get_torch_dtype(dtype)
 
-        self.vae_device_torch = torch.device(device)
+        vae_device = model_config.vae_device or self.device
+        te_device = model_config.te_device or self.device
+        self.vae_device_torch = torch.device(vae_device)
         self.vae_torch_dtype = get_torch_dtype(model_config.vae_dtype)
 
-        self.te_device_torch = torch.device(device)
+        self.te_device_torch = torch.device(te_device)
         self.te_torch_dtype = get_torch_dtype(model_config.te_dtype)
 
         self.model_config = model_config
@@ -2523,12 +2525,19 @@ class StableDiffusion:
             dtype = self.vae_torch_dtype
 
         latent_list = []
+        debug_first = os.environ.get("AITK_DEBUG_ENCODE_IMAGES", "0") == "1"
+        if debug_first:
+            print_acc(f"encode_images debug: device={device}, dtype={dtype}, vae_device={self.vae.device}, vae_dtype={self.vae.dtype}")
         # Move to vae to device if on cpu
         if self.vae.device == torch.device("cpu"):
+            if debug_first:
+                print_acc("encode_images debug: moving VAE to target device")
             self.vae.to(device)
         self.vae.eval()
         self.vae.requires_grad_(False)
         # move to device and dtype
+        if debug_first:
+            print_acc("encode_images debug: moving image tensors")
         image_list = [image.to(device, dtype=dtype) for image in image_list]
 
         VAE_SCALE_FACTOR = 2 ** (len(self.vae.config['block_out_channels']) - 1)
@@ -2540,11 +2549,21 @@ class StableDiffusion:
                 image_list[i] = Resize((image.shape[1] // VAE_SCALE_FACTOR * VAE_SCALE_FACTOR,
                                         image.shape[2] // VAE_SCALE_FACTOR * VAE_SCALE_FACTOR))(image)
 
+        if debug_first:
+            print_acc("encode_images debug: stacking image tensors")
         images = torch.stack(image_list)
+        if debug_first:
+            print_acc(f"encode_images debug: stacked images shape={tuple(images.shape)}")
         if isinstance(self.vae, AutoencoderTiny):
+            if debug_first:
+                print_acc("encode_images debug: vae.encode start (AutoencoderTiny)")
             latents = self.vae.encode(images, return_dict=False)[0]
         else:
+            if debug_first:
+                print_acc("encode_images debug: vae.encode start")
             latents = self.vae.encode(images).latent_dist.sample()
+        if debug_first:
+            print_acc("encode_images debug: vae.encode done")
         shift = self.vae.config['shift_factor'] if self.vae.config['shift_factor'] is not None else 0
 
         # flux ref https://github.com/black-forest-labs/flux/blob/c23ae247225daba30fbd56058d247cc1b1fc20a3/src/flux/modules/autoencoder.py#L303

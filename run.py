@@ -38,6 +38,7 @@ import argparse
 from toolkit.job import get_job
 from toolkit.accelerator import get_accelerator
 from toolkit.print import print_acc, setup_log_to_file
+import inspect
 
 accelerator = get_accelerator()
 
@@ -94,6 +95,14 @@ def main():
     
     if args.log is not None:
         setup_log_to_file(args.log)
+
+    try:
+        import jobs.process.BaseSDTrainProcess as _base_sd_module
+        from extensions_built_in.sd_trainer import SDTrainer as _sd_trainer_module
+        print_acc(f"Debug import path BaseSDTrainProcess: {inspect.getsourcefile(_base_sd_module)}")
+        print_acc(f"Debug import path SDTrainer: {inspect.getsourcefile(_sd_trainer_module)}")
+    except Exception as debug_import_error:
+        print_acc(f"Debug import path failed: {debug_import_error}")
 
     config_file_list = args.config_file_list
     if len(config_file_list) == 0:
