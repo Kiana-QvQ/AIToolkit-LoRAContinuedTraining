@@ -65,12 +65,7 @@ export function getAutodlFolderDefaults() {
     LORAS_FOLDER: lorasFolder,
     MODELS_FOLDER: modelsFolder,
     SD15_MODEL_PATHS: discoverSd15ModelPaths(hfHome, modelsFolder),
-    LORA_SCAN_DIRS: uniqueDirs([
-      lorasFolder,
-      path.join(lorasFolder, 'base'),
-      trainingFolder,
-      path.join(AUTODL_TMP, 'output'),
-    ]),
+    LORA_SCAN_DIRS: uniqueDirs([lorasFolder, trainingFolder, path.join(AUTODL_TMP, 'output')]),
   };
 }
 

@@ -98,17 +98,6 @@ export FORCE_EXTRACT=1
 bash ~/ai-toolkit-gl/scripts/autodl-deploy.sh
 ```
 
-## Base LoRA（勿填本机 Windows 路径）
-
-训练机在 Linux，**不能**使用 `D:\huggingface_cache\...` 等路径。应：
-
-1. WebUI **浏览文件 / 上传** → 保存到 `/root/autodl-tmp/loras/base/`（数据盘，重启实例后仍在）
-2. 或在 Jupyter 把 `.safetensors` 拷到该目录后，在任务里选服务器绝对路径
-
-保存任务时若含本机路径会被自动移除；开训前也会再次过滤。
-
-**勿将** `ai-toolkit-reference.tar.gz`、`ai-toolkit-gl.zip` 提交到 Git（超过 GitHub 100MB 限制）。
-
 ## Windows 打包
 
 ```powershell

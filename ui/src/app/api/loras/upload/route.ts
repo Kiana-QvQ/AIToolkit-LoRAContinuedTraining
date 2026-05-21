@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { getBaseLoraUploadDir } from '@/server/baseLoraPaths';
 import { getLorasFolder } from '@/server/settings';
 
 export async function POST(request: NextRequest) {
@@ -10,7 +9,6 @@ export async function POST(request: NextRequest) {
     if (!lorasFolder) {
       return NextResponse.json({ error: 'LoRAs folder not found' }, { status: 500 });
     }
-    const uploadDir = getBaseLoraUploadDir(lorasFolder);
 
     const formData = await request.formData();
     let files = formData.getAll('files');
@@ -23,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
-    await mkdir(uploadDir, { recursive: true });
+    await mkdir(lorasFolder, { recursive: true });
 
     const savedFiles: string[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -32,7 +30,7 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(bytes);
 
       const fileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const filePath = join(uploadDir, fileName);
+      const filePath = join(lorasFolder, fileName);
 
       await writeFile(filePath, buffer);
       savedFiles.push(filePath);
@@ -42,8 +40,7 @@ export async function POST(request: NextRequest) {
       message: 'LoRA files uploaded successfully',
       files: savedFiles,
       path: savedFiles[0] || null,
-      targetDir: uploadDir,
-      lorasRoot: lorasFolder,
+      targetDir: lorasFolder,
     });
   } catch (error) {
     console.error('LoRA upload error:', error);

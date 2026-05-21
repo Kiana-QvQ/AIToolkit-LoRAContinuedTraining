@@ -5,7 +5,6 @@ import path from 'path';
 import fs from 'fs';
 import { TOOLKIT_ROOT, getTrainingFolder, getHFToken, getHFHome } from '../paths';
 import { resolvePythonPath } from '../pythonPath';
-import { sanitizeBaseLorasInJobConfig } from '../sanitizeBaseLoras';
 const isWindows = process.platform === 'win32';
 const STARTUP_GRACE_MS = 4000;
 
@@ -51,21 +50,6 @@ const startAndWatchJob = (job: Job) => {
     // update the config dataset path
     const jobConfig = JSON.parse(job.job_config);
     jobConfig.config.process[0].sqlite_db_path = path.join(TOOLKIT_ROOT, 'aitk_db.db');
-
-    const { stripped } = sanitizeBaseLorasInJobConfig(jobConfig);
-    if (stripped.length > 0) {
-      console.warn(
-        `[startJob] Removed invalid base_loras (Windows/missing paths): ${stripped.join(', ')}`,
-      );
-      try {
-        await prisma.job.update({
-          where: { id: jobID },
-          data: { job_config: JSON.stringify(jobConfig) },
-        });
-      } catch (e) {
-        console.error('Failed to persist sanitized base_loras:', e);
-      }
-    }
 
     // write the config file
     fs.writeFileSync(configPath, JSON.stringify(jobConfig, null, 2));
