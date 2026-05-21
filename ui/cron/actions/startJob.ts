@@ -3,8 +3,9 @@ import { Job } from '@prisma/client';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { TOOLKIT_ROOT, getTrainingFolder, getHFToken } from '../paths';
+import { TOOLKIT_ROOT, getTrainingFolder, getHFToken, getHFHome } from '../paths';
 import { resolvePythonPath } from '../pythonPath';
+import { sanitizeBaseLorasInJobConfig } from '../sanitizeBaseLoras';
 const isWindows = process.platform === 'win32';
 const STARTUP_GRACE_MS = 4000;
 
@@ -51,6 +52,21 @@ const startAndWatchJob = (job: Job) => {
     const jobConfig = JSON.parse(job.job_config);
     jobConfig.config.process[0].sqlite_db_path = path.join(TOOLKIT_ROOT, 'aitk_db.db');
 
+    const { stripped } = sanitizeBaseLorasInJobConfig(jobConfig);
+    if (stripped.length > 0) {
+      console.warn(
+        `[startJob] Removed invalid base_loras (Windows/missing paths): ${stripped.join(', ')}`,
+      );
+      try {
+        await prisma.job.update({
+          where: { id: jobID },
+          data: { job_config: JSON.stringify(jobConfig) },
+        });
+      } catch (e) {
+        console.error('Failed to persist sanitized base_loras:', e);
+      }
+    }
+
     // write the config file
     fs.writeFileSync(configPath, JSON.stringify(jobConfig, null, 2));
 
@@ -81,6 +97,17 @@ const startAndWatchJob = (job: Job) => {
     const hfToken = await getHFToken();
     if (hfToken && hfToken.trim() !== '') {
       additionalEnv.HF_TOKEN = hfToken;
+    }
+
+    // 与 AutoDL 官方 ai-toolkit / 秋叶 共用 HF 缓存
+    const hfHome = await getHFHome();
+    if (hfHome && hfHome.trim() !== '') {
+      additionalEnv.HF_HOME = hfHome;
+      additionalEnv.HUGGINGFACE_HUB_CACHE =
+        process.env.HUGGINGFACE_HUB_CACHE || path.join(hfHome, 'hub');
+    }
+    if (process.env.HF_ENDPOINT && process.env.HF_ENDPOINT.trim() !== '') {
+      additionalEnv.HF_ENDPOINT = process.env.HF_ENDPOINT;
     }
 
     // Add the --log argument to the command

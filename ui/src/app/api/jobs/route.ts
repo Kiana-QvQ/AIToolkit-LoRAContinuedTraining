@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { isMac } from '@/helpers/basic';
+import {
+  formatBaseLoraSaveError,
+  sanitizeBaseLorasForServer,
+} from '@/server/baseLoraPaths';
+import { getLorasFolder } from '@/server/settings';
 
 const prisma = new PrismaClient();
 
@@ -39,8 +44,22 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, job_config } = body;
+    let { job_config } = body;
+    const { id, name } = body;
     let gpu_ids: string = body.gpu_ids;
+
+    const proc = job_config?.config?.process?.[0];
+    if (proc?.network?.base_loras) {
+      const lorasResult = await sanitizeBaseLorasForServer(proc.network.base_loras);
+      if (lorasResult.removedClientPaths.length || lorasResult.missingPaths.length) {
+        const lorasFolder = await getLorasFolder();
+        return NextResponse.json(
+          { error: formatBaseLoraSaveError(lorasResult, lorasFolder) },
+          { status: 400 },
+        );
+      }
+      proc.network.base_loras = lorasResult.entries;
+    }
 
     if (isMac()) {
       gpu_ids = "mps";

@@ -29,10 +29,8 @@ export default function useJobLog(jobID: string, reloadInterval: null | number =
       .get(`/api/jobs/${jobID}/log`)
       .then(res => res.data)
       .then(data => {
-        if (data.log) {
-          let cleanLog = clean(data.log);
-          setLog(cleanLog);
-        }
+        const raw = typeof data.log === 'string' ? data.log : '';
+        setLog(clean(raw));
         setStatus('success');
         didInitialLoadRef.current = true;
       })

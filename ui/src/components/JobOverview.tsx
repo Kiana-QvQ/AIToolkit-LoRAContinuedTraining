@@ -32,6 +32,9 @@ export default function JobOverview({ job }: JobOverviewProps) {
   const isStopping = job.stop && job.status === 'running';
 
   const logLines: string[] = useMemo(() => {
+    if (!log.trim()) {
+      return [];
+    }
     // split at line breaks on \n or \r\n but not \r
     let splits: string[] = log.split(/\n|\r\n/);
 
@@ -152,7 +155,10 @@ export default function JobOverview({ job }: JobOverviewProps) {
             >
               {statusLog === 'loading' && 'Loading log...'}
               {statusLog === 'error' && 'Error loading log'}
-              {['success', 'refreshing'].includes(statusLog) && (
+              {['success', 'refreshing'].includes(statusLog) && logLines.length === 0 && (
+                <p className="text-gray-500">No log output yet. If training ran, check log.txt under output/ or autodl-tmp/training/.</p>
+              )}
+              {['success', 'refreshing'].includes(statusLog) && logLines.length > 0 && (
                 <div>
                   {logLines.map((line, index) => {
                     return <pre key={index}>{line}</pre>;

@@ -88,11 +88,11 @@ const BaseLoRASelectorModal: React.FC = () => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Select Base LoRA" size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="从服务器选择 Base LoRA" size="xl">
       <div className="space-y-4">
         <div className="space-y-2">
           <div className="text-xs text-gray-500">
-            Default behavior scans the AI Toolkit training directory. You can also enter a custom directory and scan it.
+            扫描服务器上的 LoRA 目录（Settings → LoRA Folder 等）。若 LoRA 在你本机电脑上，请用表单里的「浏览文件」上传。
           </div>
           <div className="flex gap-2">
             <input

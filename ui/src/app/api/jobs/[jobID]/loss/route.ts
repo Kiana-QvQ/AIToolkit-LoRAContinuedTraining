@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
-import { getTrainingFolder } from '@/server/settings';
+import { resolveJobDirForArtifacts } from '@/server/jobPaths';
 
 import sqlite3 from 'sqlite3';
 
@@ -38,8 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: { jobID: s
   const job = await prisma.job.findUnique({ where: { id: jobID } });
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
-  const trainingFolder = await getTrainingFolder();
-  const jobFolder = path.join(trainingFolder, job.name);
+  const jobFolder = await resolveJobDirForArtifacts(job);
   const logPath = path.join(jobFolder, 'loss_log.db');
 
   if (!fs.existsSync(logPath)) {

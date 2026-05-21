@@ -20,6 +20,7 @@ import SimpleJob from './SimpleJob';
 import AdvancedConfigEditor from '@/components/AdvancedConfigEditor';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { apiClient } from '@/utils/api';
+import { pickSd15PathFromSettings, sanitizeNameOrPathForSave } from '@/utils/modelPaths';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -38,6 +39,7 @@ export default function TrainingForm() {
   const [jobConfig, setJobConfig] = useNestedState<JobConfig>(objectCopy(migrateJobConfig(defaultJobConfig)));
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autodlDefaultsApplied = useRef(false);
 
   const handleImportConfig = () => {
     fileInputRef.current?.click();
@@ -148,16 +150,44 @@ export default function TrainingForm() {
     }
   }, [settings, isSettingsLoaded]);
 
+  // AutoDL: default to SD 1.5 + first detected local/HF model path
+  useEffect(() => {
+    if (!isSettingsLoaded || !settings.IS_AUTODL || runId || cloneId || autodlDefaultsApplied.current) {
+      return;
+    }
+    const sd15Path = pickSd15PathFromSettings(settings);
+    autodlDefaultsApplied.current = true;
+    setJobConfig((prev: JobConfig) => {
+      let next = setNestedValue(prev, 'sd15', 'config.process[0].model.arch');
+      next = setNestedValue(next, sd15Path, 'config.process[0].model.name_or_path');
+      return next;
+    });
+  }, [isSettingsLoaded, settings, runId, cloneId, setJobConfig]);
+
   const saveJob = async () => {
     if (status === 'saving') return;
     setStatus('saving');
+
+    const jobToSave = objectCopy(jobConfig);
+    const proc = jobToSave.config.process[0];
+    proc.model.name_or_path = sanitizeNameOrPathForSave(
+      proc.model.arch,
+      proc.model.name_or_path,
+      settings,
+    );
+    const baseLoras = proc.network?.base_loras;
+    if (baseLoras) {
+      proc.network.base_loras = baseLoras.filter(
+        (b: { path?: string }) => b?.path != null && String(b.path).trim() !== '',
+      );
+    }
 
     apiClient
       .post('/api/jobs', {
         id: runId,
         name: jobConfig.config.name,
         gpu_ids: gpuIDs,
-        job_config: jobConfig,
+        job_config: jobToSave,
       })
       .then(res => {
         setStatus('success');

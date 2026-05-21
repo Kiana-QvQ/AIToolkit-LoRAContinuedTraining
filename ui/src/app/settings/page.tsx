@@ -91,11 +91,8 @@ export default function Settings() {
                   <label htmlFor="DATASETS_FOLDER" className="block text-sm font-medium mb-2">
                     Dataset Folder Path
                     <div className="text-gray-500 text-sm ml-1">
-                      Where we store and find your datasets.{' '}
-                      <span className="text-orange-800">
-                        Warning: This software may modify datasets so it is recommended you keep a backup somewhere else
-                        or have a dedicated folder for this software.
-                      </span>
+                      AutoDL / 秋叶: 常为 <code className="text-gray-400">/root/autodl-tmp/train</code>（与 Jupyter 运行.ipynb
+                      一致）
                     </div>
                   </label>
                   <input
@@ -105,7 +102,64 @@ export default function Settings() {
                     value={settings.DATASETS_FOLDER}
                     onChange={handleChange}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-transparent"
-                    placeholder="Enter datasets folder path"
+                    placeholder="/root/autodl-tmp/train"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="LORAS_FOLDER" className="block text-sm font-medium mb-2">
+                    LoRA Folder (Base LoRA scan)
+                    <div className="text-gray-500 text-sm ml-1">
+                      Civitai / 秋叶训练输出的 <code className="text-gray-400">.safetensors</code> 扫描目录，默认{' '}
+                      <code className="text-gray-400">/root/autodl-tmp/loras</code>
+                    </div>
+                  </label>
+                  <input
+                    type="text"
+                    id="LORAS_FOLDER"
+                    name="LORAS_FOLDER"
+                    value={settings.LORAS_FOLDER || ''}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-transparent"
+                    placeholder="/root/autodl-tmp/loras"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="MODELS_FOLDER" className="block text-sm font-medium mb-2">
+                    Base Models Folder
+                    <div className="text-gray-500 text-sm ml-1">
+                      仅用于扫描秋叶 ckpt（<code className="text-gray-400">Stable-diffusion/*.safetensors</code>）。
+                      训练底模请在任务里填 <strong>Name or Path</strong>，不要填本目录本身。
+                    </div>
+                  </label>
+                  <input
+                    type="text"
+                    id="MODELS_FOLDER"
+                    name="MODELS_FOLDER"
+                    value={settings.MODELS_FOLDER || ''}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-transparent"
+                    placeholder="/root/autodl-tmp/models"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="HF_HOME" className="block text-sm font-medium mb-2">
+                    Hugging Face Cache (HF_HOME)
+                    <div className="text-gray-500 text-sm ml-1">
+                      <code className="text-gray-400">download_sd15.py</code> 与在线拉模缓存，建议{' '}
+                      <code className="text-gray-400">/root/autodl-tmp/huggingface_cache</code>
+                    </div>
+                  </label>
+                  <input
+                    type="text"
+                    id="HF_HOME"
+                    name="HF_HOME"
+                    value={settings.HF_HOME || ''}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-transparent"
+                    placeholder="/root/autodl-tmp/huggingface_cache"
                   />
                 </div>
               </div>

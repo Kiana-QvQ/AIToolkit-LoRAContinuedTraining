@@ -26,6 +26,7 @@ export const handleModelArchChange = (
   newArchName: string,
   jobConfig: JobConfig,
   setJobConfig: (value: any, key: string) => void,
+  options?: { sd15DefaultPath?: string },
 ) => {
   const currentArch = modelArchs.find(a => a.name === currentArchName);
   if (!currentArch || currentArch.name === newArchName) {
@@ -142,5 +143,9 @@ export const handleModelArchChange = (
 
   for (const key in newDefaults) {
     setJobConfig(newDefaults[key][0], key);
+  }
+
+  if (newArchName === 'sd15' && options?.sd15DefaultPath) {
+    setJobConfig(options.sd15DefaultPath, 'config.process[0].model.name_or_path');
   }
 };

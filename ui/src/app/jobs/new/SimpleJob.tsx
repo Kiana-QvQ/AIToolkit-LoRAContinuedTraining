@@ -1,5 +1,6 @@
 'use client';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import useSettings from '@/hooks/useSettings';
 import {
   modelArchs,
   ModelArch,
@@ -30,6 +31,12 @@ import { handleModelArchChange } from './utils';
 import { IoFlaskSharp } from 'react-icons/io5';
 import { isMac } from '@/helpers/basic';
 import { openBaseLoRASelectorModal } from '@/components/BaseLoRASelectorModal';
+import BaseLoRAFilePicker from '@/components/BaseLoRAFilePicker';
+import {
+  formatModelPathLabel,
+  isBareModelsContainerPath,
+  pickSd15PathFromSettings,
+} from '@/utils/modelPaths';
 
 type Props = {
   jobConfig: JobConfig;
@@ -58,9 +65,26 @@ export default function SimpleJob({
   datasetOptions,
   isLoading,
 }: Props) {
+  const { settings, isSettingsLoaded } = useSettings();
   const modelArch = useMemo(() => {
     return modelArchs.find(a => a.name === jobConfig.config.process[0].model.arch) as ModelArch;
   }, [jobConfig.config.process[0].model.arch]);
+
+  const sd15ModelOptions: SelectOption[] = useMemo(() => {
+    const paths = settings.SD15_MODEL_PATHS || [];
+    return paths.map(p => ({
+      value: p,
+      label: formatModelPathLabel(p),
+    }));
+  }, [settings.SD15_MODEL_PATHS]);
+
+  const modelPathWarning = useMemo(() => {
+    const p = jobConfig.config.process[0].model.name_or_path || '';
+    if (jobConfig.config.process[0].model.arch === 'sd15' && isBareModelsContainerPath(p)) {
+      return '当前路径是「底模文件夹」，不能用于训练。请从下拉选择 HF 缓存 / ckpt 文件，或填 runwayml/stable-diffusion-v1-5。';
+    }
+    return null;
+  }, [jobConfig.config.process[0].model.arch, jobConfig.config.process[0].model.name_or_path]);
 
   const jobType = useMemo(() => {
     return jobTypeOptions.find(j => j.value === jobConfig.config.process[0].type);
@@ -80,6 +104,19 @@ export default function SimpleJob({
   const isVideoModel = !!(modelArch?.group === 'video');
   const isAudioModel = !!(modelArch?.group === 'audio');
   const baseLoras = jobConfig.config.process[0].network?.base_loras ?? [];
+  const [baseLoraPickError, setBaseLoraPickError] = useState<string | null>(null);
+  const setBaseLoraPathAt = (idx: number, path: string) => {
+    setJobConfig(path, `config.process[0].network.base_loras[${idx}].path`);
+    setBaseLoraPickError(null);
+  };
+
+  const addBaseLoraAndBrowse = () => {
+    const next = objectCopy(baseLoras);
+    const newIdx = next.length;
+    next.push({ path: '', strength: 1.0 });
+    setJobConfig(next, 'config.process[0].network.base_loras');
+    setTimeout(() => document.getElementById(`base-lora-file-input-${newIdx}`)?.click(), 50);
+  };
 
   const taggedSampleArr: Record<string, any>[] | null = useMemo(() => {
     if (!modelArch) return null;
@@ -275,10 +312,39 @@ export default function SimpleJob({
               label="Model Architecture"
               value={jobConfig.config.process[0].model.arch}
               onChange={value => {
-                handleModelArchChange(jobConfig.config.process[0].model.arch, value, jobConfig, setJobConfig);
+                const sd15Default =
+                  value === 'sd15' && isSettingsLoaded ? pickSd15PathFromSettings(settings) : undefined;
+                handleModelArchChange(jobConfig.config.process[0].model.arch, value, jobConfig, setJobConfig, {
+                  sd15DefaultPath: sd15Default,
+                });
               }}
               options={groupedModelOptions}
             />
+            {jobConfig.config.process[0].model.arch === 'sd15' && isSettingsLoaded && (
+              <>
+                {sd15ModelOptions.length > 0 && (
+                  <SelectInput
+                    label="SD 1.5 底模（与 6006 官方 / 秋叶共用）"
+                    value={
+                      jobConfig.config.process[0].model.name_or_path ||
+                      pickSd15PathFromSettings(settings)
+                    }
+                    onChange={value => setJobConfig(value, 'config.process[0].model.name_or_path')}
+                    options={sd15ModelOptions}
+                  />
+                )}
+                <div className="text-xs text-gray-500 space-y-1">
+                  <p>
+                    共用缓存目录：<code className="text-gray-400">{settings.HF_HOME || '/root/autodl-tmp/huggingface_cache'}</code>
+                  </p>
+                  <p>
+                    秋叶 ckpt 在 <code className="text-gray-400">{settings.MODELS_FOLDER || '/root/autodl-tmp/models'}/Stable-diffusion/</code>
+                    ，请选具体 <code className="text-gray-400">.safetensors</code> 文件路径，不要只填 models 文件夹。
+                  </p>
+                </div>
+              </>
+            )}
+            {modelPathWarning && <div className="text-xs text-amber-400">{modelPathWarning}</div>}
             <TextInput
               label="Name or Path"
               value={jobConfig.config.process[0].model.name_or_path}
@@ -289,7 +355,11 @@ export default function SimpleJob({
                 }
                 setJobConfig(value, 'config.process[0].model.name_or_path');
               }}
-              placeholder=""
+              placeholder={
+                settings.IS_AUTODL
+                  ? 'runwayml/stable-diffusion-v1-5 或 HF 快照路径 或 .safetensors 全路径'
+                  : ''
+              }
               required
             />
             {modelArch?.additionalSections?.includes('model.assistant_lora_path') && (
@@ -489,7 +559,12 @@ export default function SimpleJob({
                   strength, 0.5 for half strength, and 0.0 to disable a base LoRA. Values above 1.0 or below 0.0 are
                   allowed for advanced use.
                 </div>
-                {baseLoras.length === 0 && <div className="text-xs text-gray-500">No base LoRAs configured.</div>}
+                {baseLoras.length === 0 && (
+                  <div className="text-xs text-gray-500">
+                    未配置 Base LoRA 也可以正常训练（仅在底模上训练新 LoRA）。需要续训时再添加。
+                  </div>
+                )}
+                {baseLoraPickError && <div className="text-xs text-rose-400">{baseLoraPickError}</div>}
                 {baseLoras.map((baseLora, idx) => (
                   <div key={idx} className="rounded-sm border border-gray-800 bg-gray-950/60 p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -509,20 +584,33 @@ export default function SimpleJob({
                       label="Path"
                       value={baseLora.path ?? ''}
                       onChange={value => setJobConfig(value, `config.process[0].network.base_loras[${idx}].path`)}
-                      placeholder="Path to an existing LoRA .safetensors"
+                      placeholder="点击「浏览文件」选择本机 .safetensors，或「服务器」选已有路径"
                       suffix={
-                        <button
-                          type="button"
-                          className="text-xs text-gray-300 hover:text-white"
-                          onClick={e => {
-                            e.preventDefault();
-                            openBaseLoRASelectorModal(path =>
-                              setJobConfig(path, `config.process[0].network.base_loras[${idx}].path`),
-                            );
-                          }}
-                        >
-                          Select
-                        </button>
+                        <div className="flex items-center gap-2 pr-1">
+                          <BaseLoRAFilePicker
+                            inputId={`base-lora-file-input-${idx}`}
+                            onUploaded={path => setBaseLoraPathAt(idx, path)}
+                            onError={setBaseLoraPickError}
+                          >
+                            <button
+                              type="button"
+                              className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100 whitespace-nowrap"
+                              onClick={e => e.preventDefault()}
+                            >
+                              浏览文件
+                            </button>
+                          </BaseLoRAFilePicker>
+                          <button
+                            type="button"
+                            className="text-xs px-2 py-1 rounded border border-gray-600 text-gray-300 hover:text-white whitespace-nowrap"
+                            onClick={e => {
+                              e.preventDefault();
+                              openBaseLoRASelectorModal(path => setBaseLoraPathAt(idx, path));
+                            }}
+                          >
+                            服务器
+                          </button>
+                        </div>
                       }
                     />
                     <NumberInput
@@ -551,16 +639,9 @@ export default function SimpleJob({
                 <button
                   type="button"
                   className="w-full rounded-sm border border-dashed border-gray-700 px-3 py-2 text-sm text-gray-300 hover:border-gray-500 hover:text-white"
-                  onClick={() => {
-                    const next = objectCopy(baseLoras);
-                    next.push({
-                      path: '',
-                      strength: 1.0,
-                    });
-                    setJobConfig(next, 'config.process[0].network.base_loras');
-                  }}
+                  onClick={addBaseLoraAndBrowse}
                 >
-                  Add Base LoRA
+                  + 添加 Base LoRA（点击后选择文件）
                 </button>
               </div>
             </FormGroup>

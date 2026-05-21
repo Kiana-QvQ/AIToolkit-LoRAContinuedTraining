@@ -185,3 +185,8 @@ aitk_db.db
 /notes.md
 /data
 .claude
+
+# AutoDL 打包产物 / 参考包（勿提交 GitHub，>100MB 会被拒）
+ai-toolkit-reference.tar.gz
+ai-toolkit-gl.zip
+*.tar.gz

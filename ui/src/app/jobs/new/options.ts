@@ -536,7 +536,7 @@ export const modelArchs: ModelArch[] = [
     group: 'image',
     defaults: {
       // default updates when [selected, unselected] in the UI
-      'config.process[0].model.name_or_path': ['stable-diffusion-v1-5/stable-diffusion-v1-5', defaultNameOrPath],
+      'config.process[0].model.name_or_path': ['runwayml/stable-diffusion-v1-5', defaultNameOrPath],
       'config.process[0].sample.sampler': ['ddpm', 'flowmatch'],
       'config.process[0].train.noise_scheduler': ['ddpm', 'flowmatch'],
       'config.process[0].sample.width': [512, 1024],

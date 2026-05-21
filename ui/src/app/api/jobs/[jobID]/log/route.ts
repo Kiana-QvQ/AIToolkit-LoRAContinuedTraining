@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
-import { getTrainingFolder } from '@/server/settings';
+import { resolveJobDirForLog } from '@/server/jobPaths';
 
 const prisma = new PrismaClient();
 
@@ -17,12 +17,11 @@ export async function GET(request: NextRequest, { params }: { params: { jobID: s
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
 
-  const trainingFolder = await getTrainingFolder();
-  const jobFolder = path.join(trainingFolder, job.name);
+  const jobFolder = await resolveJobDirForLog(job);
   const logPath = path.join(jobFolder, 'log.txt');
 
   if (!fs.existsSync(logPath)) {
-    return NextResponse.json({ log: '' });
+    return NextResponse.json({ log: '', logPath });
   }
   let log = '';
   try {
@@ -31,5 +30,5 @@ export async function GET(request: NextRequest, { params }: { params: { jobID: s
     console.error('Error reading log file:', error);
     log = 'Error reading log file';
   }
-  return NextResponse.json({ log: log });
+  return NextResponse.json({ log, logPath });
 }
